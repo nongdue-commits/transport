@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบบริหารงานขนส่ง</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{--pri:#1e3a8a;--acc:#2563eb}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Sarabun',sans-serif;background:#f1f5f9;color:#1f2937;display:flex;min-height:100vh}
+aside{width:235px;background:var(--pri);color:#fff;flex-shrink:0;position:sticky;top:0;height:100vh;overflow:auto}
+aside h1{font-size:19px;padding:16px;margin:0;border-bottom:1px solid #fff3}
+.grp{font-size:11px;opacity:.6;padding:12px 16px 4px;letter-spacing:.5px}
+aside a{display:block;padding:8px 16px;color:#fff;cursor:pointer;font-size:14px}
+aside a:hover{background:#fff2}
+aside a.on{background:#fff;color:var(--pri);font-weight:600;border-radius:0 20px 20px 0;margin-right:10px}
+.nb{float:right;background:#dc2626;color:#fff;border-radius:10px;padding:0 7px;font-size:12px}
+.wrap{flex:1;min-width:0}
+.top{background:#fff;padding:10px 20px;display:flex;gap:10px;align-items:center;box-shadow:0 1px 3px #0001;position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.top h2{margin:0;flex:1;font-size:20px}
+main{padding:20px}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px #0001}
+.card h3{margin:0 0 10px;font-size:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 3px #0001;border-top:4px solid var(--c)}
+.kpi small{color:#6b7280}.kpi b{display:block;font-size:21px;margin-top:4px}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+.ch{height:260px;position:relative}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+label{font-size:13px;display:flex;flex-direction:column;gap:3px}
+input,select,textarea{padding:7px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}
+button,.btn{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit;margin:2px;display:inline-block}
+button.g{background:#64748b}button.r{background:#dc2626}button.ok{background:#16a34a}button.s{padding:3px 8px;font-size:13px}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.scroll{overflow:auto;max-height:600px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid #e5e7eb;padding:6px;text-align:left;white-space:nowrap}
+th{background:#f8fafc;position:sticky;top:0;z-index:1}
+td input,td select{border:1px solid transparent;padding:3px;width:100%;min-width:90px;background:transparent}
+td input:focus,td select:focus{border-color:var(--acc);background:#fff}
+td input:disabled,td select:disabled{color:#475569}
+.num{text-align:right}
+.note{white-space:pre-wrap;min-width:200px;max-width:320px;font-size:12px;color:#6b7280}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+.b-red{background:#dc2626}.b-yel{background:#d97706}.b-grn{background:#16a34a}
+.alert{padding:8px 12px;border-radius:8px;margin:4px 0;background:#fef3c7;font-size:14px}
+.alert.red{background:#fee2e2}
+.hint{color:#6b7280;font-size:13px}
+.steps{display:flex;gap:8px;flex-wrap:wrap}
+.step{flex:1;min-width:150px;padding:10px;border-radius:10px;background:#f8fafc;border:2px solid #e5e7eb;cursor:pointer}
+.step.done{border-color:#16a34a;background:#f0fdf4}
+.menu-btn{display:none}
+@media(max-width:800px){aside{position:fixed;left:-240px;z-index:20;transition:.2s}aside.show{left:0}.menu-btn{display:inline-block}main{padding:10px}}
+</style>
+</head>
+<body>
+<aside id="side"><h1>🚚 ระบบขนส่ง</h1><nav id="nav"></nav></aside>
+<div class="wrap">
+ <div class="top">
+  <button class="menu-btn" onclick="$('#side').classList.toggle('show')">☰</button>
+  <h2 id="title"></h2>
+  <label style="flex-direction:row;align-items:center;gap:6px">งวดเดือน <input type="month" id="month" onchange="month=this.value||today.slice(0,7);render()"></label>
+  <button onclick="exportAll()">📥 Excel ทั้งเดือน</button>
+ </div>
+ <main id="main"></main>
+</div>
+<script>
+// ================= ตัวช่วยทั่วไป =================
+const $=s=>document.querySelector(s);
+const D=s=>{const[a,b,c]=String(s).split('-');return new Date(+a,+b-1,+(c||1))};
+const ymd=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+const today=ymd(new Date());
+const addDays=(s,n)=>{const x=D(s);x.setDate(x.getDate()+n);return ymd(x)};
+const daysTo=s=>Math.round((D(s)-D(today))/864e5);
+const fmt=n=>(+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const r2=n=>Math.round((+n||0)*100)/100;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const sum=(a,f)=>a.reduce((s,x)=>s+(+f(x)||0),0);
+const groupBy=(a,f)=>a.reduce((o,x)=>((o[f(x)||'-']??=[]).push(x),o),{});
+const thDate=s=>s?D(s).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'}):'-';
+const thMonth=(m,short)=>D(m).toLocaleDateString('th-TH',{month:short?'short':'long',year:short?'2-digit':'numeric'});
+const kpi=(l,v,c='#2563eb')=>`<div class="kpi" style="--c:${c}"><small>${l}</small><b>${v}</b></div>`;
+const tbl=(h,rows,ints=[1])=>`<div class="scroll"><table><tr>${h.map((x,i)=>`<th class="${i?'num':''}">${x}</th>`).join('')}</tr>${rows.map(r=>`<tr>${r.map((c,i)=>`<td class="${i?'num':''}">${typeof c==='number'&&!ints.includes(i)?fmt(c):esc(c)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${h.length}" class="hint">ไม่มีข้อมูล</td></tr>`}</table></div>`;
+function bahtText(n){
+ n=r2(n);if(!n)return'ศูนย์บาทถ้วน';
+ const W=['','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'],P=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+ const rd=s=>{s=String(+s);let o='';const L=s.length;for(let i=0;i<L;i++){const d=+s[i],p=L-i-1;if(!d)continue;
+  o+=(p===0&&d===1&&L>1)?'เอ็ด':(p===1&&d===2)?'ยี่':(p===1&&d===1)?'':W[d];o+=P[p]}return o};
+ const big=s=>s.length>6?big(s.slice(0,-6))+'ล้าน'+rd(s.slice(-6)):rd(s);
+ const[b,st]=n.toFixed(2).split('.');
+ return(+b?big(b)+'บาท':'')+(+st?rd(st)+'สตางค์':'ถ้วน');
+}
+
+// ================= ฐานข้อมูล (เก็บในเบราว์เซอร์) =================
+const DEF={settings:{company:'',taxid:'',address:'',phone:'',bank:'',wht:1,vat:0,sso:5,ssoCap:875},
+ customers:[],drivers:[],vehicles:[],rates:[],trips:[],expenses:[],invoices:[],skipped:[],payroll:{},ignored:[]};
+let db,page='dash',month=today.slice(0,7),charts=[],lastLog='';
+const save=()=>localStorage.setItem('tms_db',JSON.stringify(db));
+
+const SCHEMA={
+ trips:{title:'เที่ยววิ่ง',monthly:true,calc:true,cols:[['date','วันที่','date'],['driver','คนขับ','sel:drivers'],['plate','ทะเบียน','sel:vehicles'],['customer','ลูกค้า','sel:customers'],['origin','ต้นทาง'],['destination','ปลายทาง'],['trips','เที่ยว','number'],['status','สถานะ','opt:รอตรวจ|อนุมัติ']]},
+ expenses:{title:'ค่าใช้จ่าย',monthly:true,cols:[['date','วันที่','date'],['driver','คนขับ','sel:drivers'],['plate','ทะเบียน','sel:vehicles'],['category','ประเภท','opt:น้ำมัน|ทางด่วน|ซ่อมบำรุง|ยาง|ค่าลง/ค่าแรง|เบี้ยเลี้ยง|อื่นๆ'],['amount','จำนวนเงิน','number'],['payBy','ผู้จ่าย','opt:บริษัท|คนขับสำรองจ่าย'],['memo','หมายเหตุ']]},
+ customers:{title:'ลูกค้า',cols:[['name','ชื่อลูกค้า'],['taxid','เลขผู้เสียภาษี'],['branch','สาขา'],['address','ที่อยู่'],['phone','โทร'],['credit','เครดิต (วัน)','number'],['wht','หัก ณ ที่จ่าย %','number']],blank:{credit:30,wht:1,branch:'สำนักงานใหญ่'}},
+ drivers:{title:'คนขับ',cols:[['name','ชื่อ-สกุล'],['lineName','ชื่อในไลน์'],['phone','โทร'],['idcard','เลขบัตร ปชช.'],['salary','เงินเดือนฐาน','number'],['bank','บัญชีธนาคาร'],['license','ใบขับขี่หมดอายุ','date']]},
+ vehicles:{title:'รถ',cols:[['plate','ทะเบียน'],['type','ประเภทรถ'],['driver','คนขับประจำ','sel:drivers'],['taxExp','ภาษีรถหมดอายุ','date'],['insExp','ประกันหมดอายุ','date'],['actExp','พ.ร.บ.หมดอายุ','date'],['serviceKm','เช็กระยะถัดไป (กม.)','number']]},
+ rates:{title:'เรทราคา',cols:[['customer','ลูกค้า','sel:customers'],['origin','ต้นทาง'],['destination','ปลายทาง'],['price','ราคาเก็บลูกค้า/เที่ยว','number'],['pay','ค่าเที่ยวคนขับ/เที่ยว','number']]}
+};
+const HELP={
+ trips:'<p class="hint">💡 ราคาคำนวณจากเมนู "เรทราคา" อัตโนมัติ · ต้องเปลี่ยนสถานะเป็น "อนุมัติ" ก่อนจึงจะวางบิลได้ · เที่ยวที่วางบิลแล้วจะถูกล็อก 🔒</p>',
+ expenses:'<p class="hint">💡 รายการที่เลือก "คนขับสำรองจ่าย" ระบบจะบวกคืนให้คนขับในหน้าค่าจ้างอัตโนมัติ</p>',
+ drivers:'<p class="hint">💡 "ชื่อในไลน์" ใช้จับคู่ตอนนำเข้าแชท ต้องตรงกับชื่อที่แสดงในกลุ่มไลน์</p>',
+ vehicles:'<p class="hint">💡 ระบบจะแจ้งเตือนที่หน้าแดชบอร์ดเมื่อภาษี ประกัน หรือ พ.ร.บ. ใกล้หมดอายุภายใน 30 วัน</p>',
+ rates:'<p class="hint">💡 ระบบจับคู่ด้วยต้นทาง + ปลายทาง (+ ลูกค้า) ถ้าเส้นทางเดียวกันแต่ราคาต่างกันตามลูกค้า ให้เพิ่มคนละแถว</p>',
+ customers:'<p class="hint">💡 เครดิต (วัน) ใช้คำนวณวันครบกำหนดชำระ ข้อมูลในหน้านี้จะแสดงบนใบวางบิลและใบเสร็จ</p>'
+};
+const rateOf=t=>db.rates.find(r=>r.origin===t.origin&&r.destination===t.destination&&(!t.customer||!r.customer||r.customer===t.customer));
+function calc(t){const r=rateOf(t)||{},n=+t.trips||0;return{...t,customer:t.customer||r.customer||'',unit:+r.price||0,price:(+r.price||0)*n,pay:(+r.pay||0)*n}}
+const MT=()=>db.trips.filter(t=>(t.date||'').startsWith(month)).map(calc);
+const ME=()=>db.expenses.filter(e=>(e.date||'').startsWith(month));
+
+// ================= เมนูและการแสดงผล =================
+const MENU=[['ภาพรวม',[['dash','📊','แดชบอร์ด']]],
+ ['งานประจำวัน',[['import','📥','นำเข้าแชทไลน์'],['trips','🚚','เที่ยววิ่ง'],['expenses','⛽','ค่าใช้จ่าย']]],
+ ['การเงิน',[['billing','🧾','วางบิล & รับชำระ'],['payroll','👷','ค่าจ้าง & เงินเดือน'],['wht','📑','หัก ณ ที่จ่าย']]],
+ ['ข้อมูลหลัก',[['customers','🏢','ลูกค้า'],['drivers','🧑‍✈️','คนขับ'],['vehicles','🚛','รถ'],['rates','💰','เรทราคา']]],
+ ['รายงาน',[['reports','📈','รายงานวิเคราะห์']]],
+ ['ระบบ',[['settings','⚙️','ตั้งค่า & สำรองข้อมูล']]]];
+const PAGES={dash:pDash,import:pImport,billing:pBilling,payroll:pPayroll,wht:pWht,reports:pReports,settings:pSettings};
+function go(p){page=p;render();scrollTo(0,0)}
+function render(){
+ const nb={trips:db.trips.filter(t=>t.status!=='อนุมัติ').length,billing:db.invoices.filter(v=>v.status!=='ชำระแล้ว'&&daysTo(v.due)<0).length,import:db.skipped.length};
+ $('#nav').innerHTML=MENU.map(([g,it])=>`<div class="grp">${g}</div>`+it.map(([k,ic,t])=>`<a class="${k===page?'on':''}" onclick="go('${k}')">${ic} ${t}${nb[k]?`<span class="nb">${nb[k]}</span>`:''}</a>`).join('')).join('');
+ const m=MENU.flatMap(g=>g[1]).find(x=>x[0]===page);$('#title').textContent=m[1]+' '+m[2];
+ $('#month').value=month;
+ charts.forEach(c=>c.destroy());charts=[];
+ $('#main').innerHTML=(PAGES[page]||(()=>crud(page)))();
+ if(page==='dash')drawDash();if(page==='reports')drawRep();
+ $('#side').classList.remove('show');
+}
+const PAL=['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#64748b'];
+function mk(id,type,labels,datasets,opt={}){const el=document.getElementById(id);if(!el)return;
+ charts.push(new Chart(el,{type,data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==='doughnut'||datasets.length>1}},...opt}}))}
+
+// ================= 📊 แดชบอร์ด =================
+function alerts(){
+ const a=[];
+ db.vehicles.forEach(v=>[['taxExp','ภาษีรถ'],['insExp','ประกัน'],['actExp','พ.ร.บ.']].forEach(([k,l])=>{if(!v[k])return;const d=daysTo(v[k]);
+  if(d<=30)a.push([d<0?'red':'',`🚛 ${esc(v.plate)}: ${l} ${d<0?'หมดอายุแล้ว '+(-d)+' วัน':'จะหมดอายุใน '+d+' วัน'} (${thDate(v[k])})`])}));
+ db.drivers.forEach(x=>{if(!x.license)return;const d=daysTo(x.license);if(d<=30)a.push([d<0?'red':'',`🧑‍✈️ ${esc(x.name)}: ใบขับขี่${d<0?'หมดอายุแล้ว':' จะหมดอายุใน '+d+' วัน'}`])});
+ db.invoices.forEach(v=>{if(v.status!=='ชำระแล้ว'&&daysTo(v.due)<0)a.push(['red',`🧾 ${v.no} ${esc(v.customer)} เกินกำหนดชำระ ${-daysTo(v.due)} วัน (${fmt(v.net)} บาท)`])});
+ const T=MT(),nr=T.filter(t=>!t.unit).length,pd=T.filter(t=>t.status!=='อนุมัติ').length;
+ if(nr)a.push(['',`💰 มี ${nr} เที่ยวที่ยังไม่มีเรทราคา`]);
+ if(pd)a.push(['',`✔ มี ${pd} เที่ยวรอตรวจและอนุมัติ`]);
+ if(db.skipped.length)a.push(['',`❓ มี ${db.skipped.length} ข้อความจากไลน์ที่ระบบอ่านไม่ออก`]);
+ return a;
+}
+function pDash(){
+ const T=MT(),E=ME(),rev=sum(T,t=>t.price),pay=sum(T,t=>t.pay),exp=sum(E,e=>e.amount);
+ const unpaid=db.invoices.filter(v=>v.status!=='ชำระแล้ว'),pend=T.filter(t=>t.status!=='อนุมัติ').length,unb=T.filter(t=>!t.invoiceNo).length;
+ const inv=db.invoices.filter(v=>v.period===month),paidN=inv.filter(v=>v.status==='ชำระแล้ว').length,pd=!!db.payroll['paid|'+month];
+ const steps=[['📥','นำเข้าข้อมูล',T.length>0,`${T.length} รายการ`,'import'],['✔','ตรวจ & อนุมัติ',T.length&&!pend,`รอตรวจ ${pend} เที่ยว`,'trips'],
+  ['🧾','วางบิล',T.length&&!unb,`ค้างวางบิล ${unb} เที่ยว`,'billing'],['💵','รับชำระ',inv.length&&paidN===inv.length,`รับแล้ว ${paidN}/${inv.length} ใบ`,'billing'],
+  ['👷','จ่ายค่าจ้าง',pd,pd?'ปิดงวดแล้ว':'ยังไม่ปิดงวด','payroll']];
+ const al=alerts();
+ return `<div class="kpis">${kpi('จำนวนเที่ยว',sum(T,t=>t.trips))}${kpi('รายได้ค่าขนส่ง',fmt(rev),'#16a34a')}${kpi('ค่าเที่ยวคนขับ',fmt(pay),'#d97706')}${kpi('ค่าใช้จ่ายรถ',fmt(exp),'#dc2626')}${kpi('กำไรขั้นต้น',fmt(rev-pay-exp),'#7c3aed')}${kpi('ลูกหนี้ค้างชำระ',fmt(sum(unpaid,v=>v.net)),'#0891b2')}</div>
+ <div class="card"><h3>🔄 ขั้นตอนงานประจำเดือน ${thMonth(month)}</h3><div class="steps">${steps.map(([ic,t,ok,d,p],i)=>`<div class="step ${ok?'done':''}" onclick="go('${p}')"><b>${i+1}. ${ic} ${t}</b><br><small>${ok?'✅ ':''}${d}</small></div>`).join('')}</div></div>
+ <div class="g2">
+  <div class="card"><h3>📅 รายได้รายวัน</h3><div class="ch"><canvas id="c1"></canvas></div></div>
+  <div class="card"><h3>🔔 แจ้งเตือน (${al.length})</h3><div style="max-height:260px;overflow:auto">${al.length?al.map(([c,t])=>`<div class="alert ${c}">${t}</div>`).join(''):'<p class="hint">ไม่มีเรื่องต้องจัดการ 🎉</p>'}</div></div>
+  <div class="card"><h3>⛽ ค่าใช้จ่ายตามประเภท</h3><div class="ch"><canvas id="c2"></canvas></div></div>
+  <div class="card"><h3>🏢 รายได้ตามลูกค้า</h3><div class="ch"><canvas id="c3"></canvas></div></div>
+  <div class="card"><h3>🚛 จำนวนเที่ยวตามรถ</h3><div class="ch"><canvas id="c4"></canvas></div></div>
+ </div>`;
+}
+function drawDash(){
+ const T=MT(),E=ME(),n=new Date(+month.slice(0,4),+month.slice(5,7),0).getDate(),days=[...Array(n)].map((_,i)=>i+1);
+ mk('c1','bar',days,[{label:'รายได้',data:days.map(d=>sum(T.filter(t=>+t.date.slice(8)===d),t=>t.price)),backgroundColor:'#2563eb'}]);
+ const ec=groupBy(E,e=>e.category);mk('c2','doughnut',Object.keys(ec),[{data:Object.values(ec).map(a=>sum(a,e=>e.amount)),backgroundColor:PAL}]);
+ const cc=groupBy(T,t=>t.customer||'ไม่ระบุ');mk('c3','bar',Object.keys(cc),[{label:'รายได้',data:Object.values(cc).map(a=>sum(a,t=>t.price)),backgroundColor:'#16a34a'}],{indexAxis:'y'});
+ const vc=groupBy(T,t=>t.plate);mk('c4','bar',Object.keys(vc),[{label:'เที่ยว',data:Object.values(vc).map(a=>sum(a,t=>t.trips)),backgroundColor:'#d97706'}]);
+}
+
+// ================= 📥 นำเข้าแชทไลน์ =================
+const ALIAS={'กทม':'กรุงเทพ','กทม.':'กรุงเทพ','กรุงเทพฯ':'กรุงเทพ','บางกอก':'กรุงเทพ','ชบ':'ชลบุรี','รย':'ระยอง'};
+const EXP=[['น้ำมัน',/น้ำมัน|เติม|ดีเซล|โซล่า/],['ทางด่วน',/ทางด่วน|มอเตอร์เวย์/],['ยาง',/ยาง/],['ซ่อมบำรุง',/ซ่อม|อะไหล่/],['ค่าลง/ค่าแรง',/ค่าลง|ค่าแรงลง|ค่ายก/],['อื่นๆ',/ค่าจอด|ค่าชั่ง|ค่าผ่าน/]];
+const PLATE=/(?:^|[\s:,(]|ทะเบียน)(\d?[ก-ฮ]{1,2}\s?-?\d{1,4}|\d{2}-\d{4})(?=$|[\s,)])/;
+const ROUTE=/([ก-๙a-zA-Z.]{2,})\s*(?:->|-|–|>)\s*([ก-๙a-zA-Z.]{2,})/;
+const norm=p=>{p=p.trim().replace(/^(วิ่ง|จาก|ไป|ส่ง)/,'');return ALIAS[p]||p};
+function parseDate(s){
+ let m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/),d,mo,y;
+ if(m){d=+m[1];mo=+m[2];y=+m[3]}
+ else if(m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/)){y=+m[1];mo=+m[2];d=+m[3]}
+ else return null;
+ if(y>2400)y-=543;
+ return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function parseChat(txt){
+ const msgs=[];let date=null;
+ for(const raw of txt.replace(/\r/g,'').split('\n')){
+  const line=raw.trim();if(!line)continue;
+  const m=raw.match(/^(\d{1,2}:\d{2})[^\t]*\t([^\t]*)\t(.*)$/)||line.match(/^(\d{1,2}:\d{2})\s+(\S+)\s+(.+)$/);
+  if(m&&date){msgs.push({date,time:m[1],name:m[2].trim(),text:m[3].replace(/^"|"$/g,'')});continue}
+  const d=line.length<45&&parseDate(line);
+  if(d){date=d;continue}
+  if(msgs.length)msgs[msgs.length-1].text+='\n'+line.replace(/"$/,'');
+ }
+ return msgs;
+}
+function extract(m){
+ const t=m.text.replace(/\n/g,' '),out=[],pm=t.match(PLATE),plate=pm?pm[1].replace(/\s/g,''):'';
+ const rest=pm?t.replace(pm[1],' '):t,base={date:m.date,driver:m.name,plate,note:m.text};
+ const ek=EXP.find(([,re])=>re.test(t)),r=rest.match(ROUTE);
+ if(r&&(!ek||/เที่ยว/.test(t))){const tc=rest.match(/(\d+)\s*เที่ยว/);out.push(['trips',{...base,customer:'',origin:norm(r[1]),destination:norm(r[2]),trips:tc?+tc[1]:1,status:'รอตรวจ'}])}
+ if(ek){const nums=(rest.replace(/\d+\s*เที่ยว/g,'').match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(n=>+n.replace(/,/g,'')).filter(n=>n>=10);
+  if(nums.length)out.push(['expenses',{...base,category:ek[0],amount:Math.max(...nums),payBy:'คนขับสำรองจ่าย',memo:''}])}
+ return out;
+}
+function importMsgs(msgs){
+ const seen=new Set([...db.trips,...db.expenses,...db.skipped].map(x=>x.src).filter(Boolean).concat(db.ignored));
+ let nt=0,ne=0,ns=0,dup=0,last='';
+ msgs.forEach(m=>{
+  const src=[m.date,m.time,m.name,m.text].join('|');if(seen.has(src)){dup++;return}seen.add(src);
+  const drv=(db.drivers.find(d=>d.lineName&&d.lineName===m.name)||db.drivers.find(d=>d.name===m.name))?.name||m.name;
+  const res=extract({...m,name:drv});
+  res.forEach(([k,row])=>{
+   if(!row.plate&&row.driver)row.plate=db.vehicles.find(v=>v.driver===row.driver)?.plate||'';
+   if(!row.driver&&row.plate)row.driver=db.vehicles.find(v=>v.plate===row.plate)?.driver||'';
+   db[k].push({id:uid(),src,...row});k==='trips'?nt++:ne++;last=row.date});
+  if(!res.length&&/เที่ยว|ทะเบียน|\d{3,}/.test(m.text)){db.skipped.push({src,date:m.date,driver:drv,text:m.text});ns++}
+ });
+ lastLog=`✅ อ่าน ${msgs.length} ข้อความ → เที่ยววิ่งใหม่ <b>${nt}</b> · ค่าใช้จ่ายใหม่ <b>${ne}</b> · อ่านไม่ออก <b>${ns}</b> · ซ้ำ/ข้าม ${dup}`;
+ if(last)month=last.slice(0,7);save();render();
+}
+async function importFiles(inp){let msgs=[];for(const f of inp.files)msgs.push(...parseChat(await f.text()));inp.value='';
+ if(!msgs.length)return alert('อ่านไฟล์ไม่ได้ค่ะ ลองส่งตัวอย่างไฟล์ให้ผู้ช่วยปรับโค้ดนะคะ');importMsgs(msgs)}
+function importText(){const txt=$('#chatText').value;if(!txt.trim())return;let msgs=parseChat(txt);
+ if(!msgs.length)msgs=txt.split('\n').map(l=>l.trim()).filter(Boolean).map((text,k)=>({date:today,time:'#'+k,name:'',text}));importMsgs(msgs)}
+function toTrip(i){const s=db.skipped.splice(i,1)[0];db.trips.push({id:uid(),src:s.src,date:s.date,driver:s.driver,plate:'',customer:'',origin:'',destination:'',trips:1,status:'รอตรวจ',note:s.text});save();month=s.date.slice(0,7);go('trips')}
+function delSkip(i){const s=db.skipped.splice(i,1)[0];db.ignored.push(s.src);save();render()}
+function pImport(){
+ return `<div class="card"><h3>📥 นำเข้าข้อมูลจากแชทไลน์</h3>
+ <ol class="hint"><li><b>มือถือ:</b> เข้ากลุ่ม → ☰ → การตั้งค่า → ส่งออกประวัติแชท · <b>คอม:</b> เปิดแชท → ⋮ → บันทึกแชท</li>
+ <li>อัปโหลดไฟล์ .txt (ได้หลายไฟล์) หรือคัดลอกข้อความมาวาง</li>
+ <li>รายการใหม่จะเข้าเมนู "เที่ยววิ่ง" และ "ค่าใช้จ่าย" สถานะ <b>รอตรวจ</b> อัปโหลดไฟล์ซ้ำได้ ระบบตัดรายการซ้ำให้</li></ol>
+ <input type="file" accept=".txt" multiple onchange="importFiles(this)">
+ <p style="margin:12px 0 4px">หรือวางข้อความ (1 บรรทัด = 1 รายการ):</p>
+ <textarea id="chatText" rows="5" style="width:100%" placeholder="ก215 กทม-ระยอง 2 เที่ยว&#10;70-1234 เติมน้ำมัน 2,500"></textarea>
+ <button onclick="importText()">นำเข้าข้อความ</button>
+ ${lastLog?`<div class="alert" style="background:#dcfce7">${lastLog}</div>`:''}</div>
+ <div class="card"><h3>❓ ข้อความที่ระบบอ่านไม่ออก (${db.skipped.length})</h3>${db.skipped.length?`<div class="scroll"><table><tr><th>วันที่</th><th>ผู้ส่ง</th><th>ข้อความ</th><th></th></tr>${db.skipped.map((s,i)=>`<tr><td>${thDate(s.date)}</td><td>${esc(s.driver)}</td><td class="note">${esc(s.text)}</td><td><button class="s" onclick="toTrip(${i})">→ เป็นเที่ยววิ่ง</button><button class="s r" onclick="delSkip(${i})">ไม่ใช่งาน</button></td></tr>`).join('')}</table></div>`:'<p class="hint">ไม่มีค่ะ 🎉</p>'}</div>
+ <div class="card"><h3>💡 รูปแบบที่แนะนำให้คนขับพิมพ์</h3><table><tr><th>งาน</th><th>ตัวอย่าง</th></tr>
+ <tr><td>เที่ยววิ่ง</td><td><code>ก215 กรุงเทพ-ระยอง 2 เที่ยว</code></td></tr><tr><td>น้ำมัน</td><td><code>ก215 เติมน้ำมัน 1500</code></td></tr>
+ <tr><td>ทางด่วน</td><td><code>70-1234 ทางด่วน 105</code></td></tr><tr><td>ซ่อม</td><td><code>71-5678 ซ่อมเบรก 3,200</code></td></tr></table></div>`;
+}
+
+// ================= ตารางแก้ไขได้ (ใช้ร่วมหลายเมนู) =================
+const optsOf=t=>t.startsWith('sel:')?db[t.slice(4)].map(x=>x.name||x.plate):t.slice(4).split('|');
+function cell(key,i,r,[k,,t=''],lock,c){
+ const on=`${lock?'disabled':''} onchange="upd('${key}',${i},'${k}',this.value,'${t}')"`,v=r[k]??'';
+ if(t.startsWith('sel:')||t.startsWith('opt:')){
+  const o=[...new Set([...optsOf(t),v].filter(x=>x!==''))];
+  const first=key==='trips'&&k==='customer'&&!v&&c?.customer?`(อัตโนมัติ: ${c.customer})`:'';
+  return `<td><select ${on}><option value="">${esc(first)}</option>${o.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`).join('')}</select></td>`;
+ }
+ return `<td><input type="${t||'text'}" value="${esc(v)}" ${on}></td>`;
+}
+function crud(key){
+ const S=SCHEMA[key];
+ const rows=db[key].map((r,i)=>[r,i]).filter(([r])=>!S.monthly||(r.date||'').startsWith(month));
+ if(S.monthly)rows.sort((a,b)=>(a[0].date||'').localeCompare(b[0].date||''));
+ let h=`<div class="card"><div class="bar">
+  <button onclick="addRow('${key}')">+ เพิ่ม${S.title}</button>
+  <input placeholder="🔍 ค้นหา..." oninput="filt(this.value)" style="max-width:240px">
+  <button class="g" onclick="xlsOne('${key}')">📥 Excel</button>
+  ${key==='rates'?'<button class="g" onclick="addMissingRates()">+ ดึงเส้นทางที่ยังไม่มีเรท</button>':''}
+  ${key==='trips'?'<button class="ok" onclick="approveAll()">✔ อนุมัติทั้งหมดของเดือนนี้</button>':''}
+  <span class="hint">${rows.length} รายการ${S.monthly?' · '+thMonth(month):''}</span></div>
+  <div class="scroll" style="margin-top:10px"><table id="tb"><tr>${S.cols.map(c=>`<th>${c[1]}</th>`).join('')}${S.calc?'<th class="num">ราคา/เที่ยว</th><th class="num">ค่าเที่ยวลูกค้า</th><th class="num">ค่าจ้างคนขับ</th><th>บิล</th>':''}${S.monthly?'<th>ข้อความต้นฉบับ</th>':''}<th></th></tr>`;
+ rows.forEach(([r,i])=>{
+  const c=S.calc?calc(r):null,lock=!!r.invoiceNo;
+  h+=`<tr id="r${i}" data-q="${esc(JSON.stringify(r).toLowerCase())}">`+S.cols.map(col=>cell(key,i,r,col,lock,c)).join('');
+  if(S.calc)h+=`<td class="num cu">${fmt(c.unit)}</td><td class="num cp">${fmt(c.price)}</td><td class="num cq">${fmt(c.pay)}</td><td>${lock?`<span class="badge b-grn">${r.invoiceNo}</span>`:''}</td>`;
+  if(S.monthly)h+=`<td class="note">${esc(r.note||'')}</td>`;
+  h+=`<td>${lock?'🔒':`<button class="s r" onclick="delRow('${key}',${i})">ลบ</button>`}</td></tr>`;
+ });
+ return h+'</table></div></div>'+(HELP[key]||'');
+}
+function filt(q){q=q.toLowerCase();document.querySelectorAll('#tb tr[data-q]').forEach(tr=>tr.style.display=tr.dataset.q.includes(q)?'':'none')}
+function upd(key,i,k,v,t){const r=db[key][i];r[k]=t==='number'?+v:v;save();
+ if(key==='trips'){const c=calc(r),tr=$('#r'+i);tr.querySelector('.cu').textContent=fmt(c.unit);tr.querySelector('.cp').textContent=fmt(c.price);tr.querySelector('.cq').textContent=fmt(c.pay)}}
+function addRow(key){const S=SCHEMA[key],r={id:uid(),...(S.blank||{})};
+ if(S.monthly)r.date=month===today.slice(0,7)?today:month+'-01';
+ if(key==='trips')Object.assign(r,{trips:1,status:'รอตรวจ',note:'เพิ่มเอง'});
+ if(key==='expenses')Object.assign(r,{category:'น้ำมัน',payBy:'บริษัท',note:'เพิ่มเอง'});
+ db[key].unshift(r);save();render()}
+function delRow(key,i){const r=db[key][i];if(r.invoiceNo||!confirm('ลบรายการนี้?'))return;if(r.src)db.ignored.push(r.src);db[key].splice(i,1);save();render()}
+function approveAll(){db.trips.forEach(t=>{if((t.date||'').startsWith(month)&&!t.invoiceNo)t.status='อนุมัติ'});save();render()}
+function addMissingRates(){const k=new Set(db.rates.map(r=>r.origin+'|'+r.destination));let n=0;
+ db.trips.forEach(t=>{const x=t.origin+'|'+t.destination;if(t.origin&&t.destination&&!k.has(x)){k.add(x);n++;db.rates.push({id:uid(),customer:t.customer||'',origin:t.origin,destination:t.destination,price:0,pay:0})}});
+ save();render();alert(n?`เพิ่ม ${n} เส้นทาง กรุณาใส่ราคาด้วยนะคะ`:'ทุกเส้นทางมีเรทแล้วค่ะ')}
+
+// ================= 🧾 วางบิล & รับชำระ =================
+function nextNo(p,date){const pre=p+date.slice(0,7).replace('-','')+'-';
+ const n=db.invoices.flatMap(v=>[v.no,v.rcNo]).filter(x=>x&&x.startsWith(pre)).map(x=>+x.split('-')[1]);
+ return pre+String(Math.max(0,...n)+1).padStart(3,'0')}
+function makeInvoice(c,m,date=today){
+ const T=db.trips.filter(t=>(t.date||'').startsWith(m)&&!t.invoiceNo&&t.status==='อนุมัติ').map(calc).filter(t=>(t.customer||'ไม่ระบุลูกค้า')===c).sort((a,b)=>a.date.localeCompare(b.date));
+ if(!T.length)return null;
+ const cu=db.customers.find(x=>x.name===c)||{},s=db.settings,wr=cu.wht===undefined||cu.wht===''?+s.wht:+cu.wht;
+ const sub=r2(sum(T,t=>t.price)),vat=r2(sub*(+s.vat||0)/100),wht=r2(sub*wr/100),no=nextNo('INV',date),ids=new Set(T.map(t=>t.id));
+ db.trips.forEach(t=>{if(ids.has(t.id))t.invoiceNo=no});
+ const v={id:uid(),no,date,customer:c,period:m,items:T.map(t=>({id:t.id,date:t.date,plate:t.plate,origin:t.origin,destination:t.destination,trips:+t.trips,unit:t.unit,price:t.price})),
+  sub,vatRate:+s.vat||0,vat,whtRate:wr,wht,net:r2(sub+vat-wht),due:addDays(date,+cu.credit||30),status:'ค้างชำระ',cert:false};
+ db.invoices.push(v);return v;
+}
+function createInv(i){makeInvoice(window._bill[i],month);save();render()}
+function payInv(id){const v=db.invoices.find(x=>x.id===id),d=prompt('วันที่รับชำระ (ปปปป-ดด-วว เป็น ค.ศ.)',today);if(!d)return;
+ v.status='ชำระแล้ว';v.paidDate=d;v.rcNo=nextNo('RC',d);save();render()}
+function cancelInv(id){if(!confirm('ยกเลิกใบวางบิลนี้? เที่ยววิ่งจะกลับไปรอวางบิล'))return;const v=db.invoices.find(x=>x.id===id),ids=new Set(v.items.map(x=>x.id));
+ db.trips.forEach(t=>{if(ids.has(t.id))delete t.invoiceNo});db.invoices=db.invoices.filter(x=>x.id!==id);save();render()}
+function setCert(id,on){db.invoices.find(x=>x.id===id).cert=on;save()}
+function pBilling(){
+ const T=MT().filter(t=>!t.invoiceNo),G=groupBy(T,t=>t.customer||'ไม่ระบุลูกค้า');window._bill=Object.keys(G);
+ const I=[...db.invoices].sort((a,b)=>b.no.localeCompare(a.no)),unpaid=db.invoices.filter(v=>v.status!=='ชำระแล้ว'),over=unpaid.filter(v=>daysTo(v.due)<0);
+ return `<div class="kpis">${kpi('ยอดวางบิลงวดนี้',fmt(sum(db.invoices.filter(v=>v.period===month),v=>v.net)))}${kpi('รับชำระในเดือนนี้',fmt(sum(db.invoices.filter(v=>(v.paidDate||'').startsWith(month)),v=>v.net)),'#16a34a')}${kpi('ค้างชำระทั้งหมด',fmt(sum(unpaid,v=>v.net)),'#d97706')}${kpi('เกินกำหนด',`${over.length} ใบ · ${fmt(sum(over,v=>v.net))}`,'#dc2626')}</div>
+ <div class="card"><h3>① รอวางบิล งวด ${thMonth(month)}</h3>${window._bill.length?`<table><tr><th>ลูกค้า</th><th class="num">เที่ยว (อนุมัติแล้ว)</th><th class="num">ยอดเงิน</th><th class="num">รอตรวจ</th><th></th></tr>${window._bill.map((c,i)=>{const ok=G[c].filter(t=>t.status==='อนุมัติ');return `<tr><td>${esc(c)}</td><td class="num">${sum(ok,t=>t.trips)}</td><td class="num">${fmt(sum(ok,t=>t.price))}</td><td class="num">${G[c].length-ok.length}</td><td>${ok.length?`<button class="s" onclick="createInv(${i})">+ สร้างใบวางบิล</button>`:''}</td></tr>`}).join('')}</table>`:'<p class="hint">ไม่มีเที่ยวที่รอวางบิลในเดือนนี้ 🎉</p>'}
+ <p class="hint">ระบบรวมเฉพาะเที่ยวที่ "อนุมัติ" แล้ว · หัก ณ ที่จ่ายใช้อัตราจากข้อมูลลูกค้า</p></div>
+ <div class="card"><h3>② ใบวางบิล / ใบแจ้งหนี้ และ ③ การรับชำระ</h3><div class="scroll"><table><tr><th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>งวด</th><th class="num">ยอดก่อนหัก</th><th class="num">หัก ณ ที่จ่าย</th><th class="num">สุทธิ</th><th>ครบกำหนด</th><th>สถานะ</th><th></th></tr>
+ ${I.map(v=>{const st=v.status==='ชำระแล้ว'?`<span class="badge b-grn">ชำระแล้ว ${thDate(v.paidDate)}</span>`:daysTo(v.due)<0?`<span class="badge b-red">เกินกำหนด ${-daysTo(v.due)} วัน</span>`:'<span class="badge b-yel">ค้างชำระ</span>';
+ return `<tr><td>${v.no}</td><td>${thDate(v.date)}</td><td>${esc(v.customer)}</td><td>${thMonth(v.period,1)}</td><td class="num">${fmt(v.sub)}</td><td class="num">${fmt(v.wht)}</td><td class="num"><b>${fmt(v.net)}</b></td><td>${thDate(v.due)}</td><td>${st}</td><td>
+ <button class="s" onclick="printInv('${v.id}')">🖨 ใบวางบิล</button><button class="s g" onclick="xlsInv('${v.id}')">📥</button>
+ ${v.status==='ชำระแล้ว'?`<button class="s ok" onclick="printInv('${v.id}',1)">🧾 ใบเสร็จ</button>`:`<button class="s ok" onclick="payInv('${v.id}')">💵 รับชำระ</button><button class="s r" onclick="cancelInv('${v.id}')">ยกเลิก</button>`}</td></tr>`}).join('')||'<tr><td colspan="10" class="hint">ยังไม่มีใบวางบิล</td></tr>'}</table></div></div>`;
+}
+function printHTML(title,body){const w=window.open('','_blank');
+ w.document.write(`<html><head><meta charset="UTF-8"><title>${title}</title><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:Sarabun,sans-serif;padding:30px;font-size:14px}table{width:100%;border-collapse:collapse;margin:8px 0}th,td{border:1px solid #999;padding:5px}th{background:#eee}.r{text-align:right}.h{display:flex;justify-content:space-between}.sig{display:flex;justify-content:space-around;margin-top:60px;text-align:center}@media print{button{display:none}}</style></head><body>${body}<p><button onclick="print()">🖨 พิมพ์ / บันทึกเป็น PDF</button></p></body></html>`);w.document.close()}
+function printInv(id,rc){
+ const v=db.invoices.find(x=>x.id===id),s=db.settings,cu=db.customers.find(c=>c.name===v.customer)||{name:v.customer},title=rc?'ใบเสร็จรับเงิน':'ใบวางบิล / ใบแจ้งหนี้';
+ printHTML(title,`<div class="h"><div><h2 style="margin:0">${esc(s.company)}</h2>${esc(s.address)}<br>เลขประจำตัวผู้เสียภาษี ${esc(s.taxid)} โทร ${esc(s.phone)}</div>
+ <div style="text-align:right"><h2 style="margin:0">${title}</h2>เลขที่ ${rc?v.rcNo:v.no}<br>วันที่ ${thDate(rc?v.paidDate:v.date)}${rc?'':'<br>ครบกำหนดชำระ '+thDate(v.due)}</div></div><hr>
+ <p><b>ลูกค้า:</b> ${esc(cu.name)} ${cu.branch?'('+esc(cu.branch)+')':''}<br>${esc(cu.address||'')}<br>เลขประจำตัวผู้เสียภาษี ${esc(cu.taxid||'-')}${rc?'<br>อ้างอิงใบแจ้งหนี้ '+v.no:''}</p>
+ <table><tr><th>#</th><th>วันที่</th><th>ทะเบียน</th><th>เส้นทาง</th><th>เที่ยว</th><th>ราคา/เที่ยว</th><th>จำนวนเงิน</th></tr>
+ ${v.items.map((t,i)=>`<tr><td>${i+1}</td><td>${thDate(t.date)}</td><td>${esc(t.plate)}</td><td>${esc(t.origin)} - ${esc(t.destination)}</td><td class="r">${t.trips}</td><td class="r">${fmt(t.unit)}</td><td class="r">${fmt(t.price)}</td></tr>`).join('')}
+ <tr><td colspan="6" class="r">รวมเป็นเงิน</td><td class="r">${fmt(v.sub)}</td></tr>
+ ${v.vat?`<tr><td colspan="6" class="r">VAT ${v.vatRate}%</td><td class="r">${fmt(v.vat)}</td></tr>`:''}
+ <tr><td colspan="6" class="r">หัก ณ ที่จ่าย ${v.whtRate}%</td><td class="r">${fmt(v.wht)}</td></tr>
+ <tr><th colspan="6" class="r">ยอดชำระสุทธิ (${bahtText(v.net)})</th><th class="r">${fmt(v.net)}</th></tr></table>
+ ${s.bank&&!rc?`<p>ชำระโดยโอนเข้าบัญชี: ${esc(s.bank)}</p>`:''}
+ <div class="sig"><div>______________________<br>${rc?'ผู้รับเงิน':'ผู้วางบิล'}</div><div>______________________<br>${rc?'ผู้จ่ายเงิน':'ผู้รับวางบิล'}</div></div>`);
+}
+function xlsInv(id){const v=db.invoices.find(x=>x.id===id),s=db.settings;
+ const aoa=[[s.company],[s.address],['เลขประจำตัวผู้เสียภาษี '+s.taxid],[],['ใบวางบิล / ใบแจ้งหนี้'],['เลขที่',v.no,'','','วันที่',v.date],['ลูกค้า',v.customer,'','','ครบกำหนด',v.due],[],
+  ['ลำดับ','วันที่','ทะเบียน','เส้นทาง','เที่ยว','ราคา/เที่ยว','จำนวนเงิน'],...v.items.map((t,i)=>[i+1,t.date,t.plate,t.origin+' - '+t.destination,t.trips,t.unit,t.price]),[],['','','','','','รวมเป็นเงิน',v.sub]];
+ if(v.vat)aoa.push(['','','','','',`VAT ${v.vatRate}%`,v.vat]);
+ aoa.push(['','','','','',`หัก ณ ที่จ่าย ${v.whtRate}%`,v.wht],['','','','','','ยอดชำระสุทธิ',v.net],['','','','','',bahtText(v.net)]);
+ const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:8},{wch:12},{wch:10},{wch:28},{wch:8},{wch:20},{wch:14}];
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,v.no);XLSX.writeFile(wb,`${v.no}.xlsx`)}
+
+// ================= 👷 ค่าจ้าง & เงินเดือน =================
+function payRows(){
+ const T=MT(),E=ME(),s=db.settings;
+ const names=[...new Set([...db.drivers.map(d=>d.name),...T.map(t=>t.driver),...E.map(e=>e.driver)].filter(Boolean))];
+ return names.map(n=>{const d=db.drivers.find(x=>x.name===n)||{},a=db.payroll[month+'|'+n]||{},tt=T.filter(t=>t.driver===n);
+  const salary=+d.salary||0,trip=sum(tt,t=>t.pay),reimb=sum(E.filter(e=>e.driver===n&&e.payBy==='คนขับสำรองจ่าย'),e=>e.amount);
+  const bonus=+a.bonus||0,gross=salary+trip+bonus,sso=r2(Math.min(gross*(+s.sso||0)/100,+s.ssoCap||0)),tax=+a.tax||0,adv=+a.advance||0,ded=+a.deduct||0;
+  return{name:n,bank:d.bank||'',trips:sum(tt,t=>t.trips),salary,trip,bonus,gross,reimb,sso,tax,adv,ded,net:r2(gross+reimb-sso-tax-adv-ded)}});
+}
+const payJson=()=>payRows().map(p=>({'คนขับ':p.name,'บัญชี':p.bank,'เที่ยว':p.trips,'เงินเดือน':p.salary,'ค่าเที่ยว':p.trip,'เบี้ยเลี้ยง/โบนัส':p.bonus,'รวมรายได้':p.gross,'คืนเงินสำรองจ่าย':p.reimb,'ประกันสังคม':p.sso,'ภาษีหัก ณ ที่จ่าย':p.tax,'เบิกล่วงหน้า':p.adv,'หักอื่นๆ':p.ded,'สุทธิ':p.net}));
+function setPay(i,f,v){const k=month+'|'+window._pr[i];(db.payroll[k]??={})[f]=+v;save();render()}
+function pPayroll(){
+ const P=payRows();window._pr=P.map(p=>p.name);const paid=!!db.payroll['paid|'+month];
+ const inp=(i,f,v)=>`<input type="number" value="${v||''}" style="width:95px" ${paid?'disabled':''} onchange="setPay(${i},'${f}',this.value)">`;
+ return `<div class="kpis">${kpi('รวมรายได้ก่อนหัก',fmt(sum(P,p=>p.gross)))}${kpi('คืนเงินสำรองจ่าย',fmt(sum(P,p=>p.reimb)),'#0891b2')}${kpi('ประกันสังคม (ส่วนลูกจ้าง)',fmt(sum(P,p=>p.sso)),'#d97706')}${kpi('ยอดโอนสุทธิ',fmt(sum(P,p=>p.net)),'#16a34a')}</div>
+ <div class="card"><div class="bar"><button class="g" onclick="sheet('ค่าจ้าง',payJson(),'ค่าจ้าง_'+month+'.xlsx')">📥 Excel</button>
+ <button class="${paid?'g':'ok'}" onclick="db.payroll['paid|'+month]=!db.payroll['paid|'+month];save();render()">${paid?'↩ ยกเลิกปิดงวด':'✔ ปิดงวด / จ่ายแล้ว'}</button>${paid?'<span class="badge b-grn">งวดนี้จ่ายแล้ว</span>':''}</div>
+ <div class="scroll" style="margin-top:10px"><table><tr><th>คนขับ</th><th class="num">เที่ยว</th><th class="num">เงินเดือน</th><th class="num">ค่าเที่ยว</th><th>เบี้ยเลี้ยง/โบนัส</th><th class="num">รวมรายได้</th><th class="num">คืนเงินสำรองจ่าย</th><th class="num">ประกันสังคม</th><th>ภาษีหัก ณ ที่จ่าย</th><th>เบิกล่วงหน้า</th><th>หักอื่นๆ</th><th class="num">สุทธิ</th><th></th></tr>
+ ${P.map((p,i)=>`<tr><td>${esc(p.name)}</td><td class="num">${p.trips}</td><td class="num">${fmt(p.salary)}</td><td class="num">${fmt(p.trip)}</td><td>${inp(i,'bonus',p.bonus)}</td><td class="num">${fmt(p.gross)}</td><td class="num">${fmt(p.reimb)}</td><td class="num">${fmt(p.sso)}</td><td>${inp(i,'tax',p.tax)}</td><td>${inp(i,'advance',p.adv)}</td><td>${inp(i,'deduct',p.ded)}</td><td class="num"><b>${fmt(p.net)}</b></td><td><button class="s" onclick="slip(${i})">🖨 สลิป</button></td></tr>`).join('')}</table></div>
+ <p class="hint">💡 ค่าเที่ยวมาจากเรทราคา × เที่ยวที่วิ่ง · ประกันสังคมคิด ${db.settings.sso}% สูงสุด ${fmt(db.settings.ssoCap)} บาท (ปรับได้ในหน้าตั้งค่า) · นายจ้างต้องสมทบเท่ากันและนำส่งภายในวันที่ 15 ของเดือนถัดไป · ภาษีเงินเดือนยื่น ภ.ง.ด.1</p></div>`;
+}
+function slip(i){const p=payRows()[i],s=db.settings,row=(l,v)=>`<tr><td>${l}</td><td class="r">${fmt(v)}</td></tr>`;
+ printHTML('สลิปค่าจ้าง '+p.name,`<h2 style="margin:0">${esc(s.company)}</h2><h3>สลิปค่าจ้าง งวด ${thMonth(month)}</h3><p>ชื่อ: <b>${esc(p.name)}</b> · จำนวนเที่ยว: ${p.trips} · บัญชี: ${esc(p.bank||'-')}</p>
+ <div style="display:flex;gap:20px"><table><tr><th colspan="2">รายได้</th></tr>${row('เงินเดือน',p.salary)}${row('ค่าเที่ยว',p.trip)}${row('เบี้ยเลี้ยง/โบนัส',p.bonus)}${row('คืนเงินสำรองจ่าย',p.reimb)}</table>
+ <table><tr><th colspan="2">รายการหัก</th></tr>${row('ประกันสังคม',p.sso)}${row('ภาษีหัก ณ ที่จ่าย',p.tax)}${row('เบิกล่วงหน้า',p.adv)}${row('หักอื่นๆ',p.ded)}</table></div>
+ <h3 style="text-align:right">รับสุทธิ ${fmt(p.net)} บาท<br><small>(${bahtText(p.net)})</small></h3><div class="sig"><div>______________________<br>ผู้จ่ายเงิน</div><div>______________________<br>ผู้รับเงิน</div></div>`)}
+
+// ================= 📑 หัก ณ ที่จ่าย =================
+function pWht(){
+ const y=month.slice(0,4),I=db.invoices.filter(v=>v.wht>0&&v.date.startsWith(y)).sort((a,b)=>a.no.localeCompare(b.no)),got=I.filter(v=>v.cert);
+ return `<div class="kpis">${kpi('ภาษีที่ถูกหัก ณ ที่จ่าย ปี '+(+y+543),fmt(sum(I,v=>v.wht)))}${kpi('ได้รับ 50 ทวิ แล้ว',`${got.length}/${I.length} ใบ`,'#16a34a')}${kpi('ยังไม่ได้รับ 50 ทวิ (ยอดภาษี)',fmt(sum(I.filter(v=>!v.cert),v=>v.wht)),'#dc2626')}</div>
+ <div class="card"><h3>📥 ภาษีที่ลูกค้าหักเรา (ใช้เป็นเครดิตภาษีตอนยื่น ภ.ง.ด.51 / ภ.ง.ด.50)</h3><div class="scroll"><table><tr><th>ใบแจ้งหนี้</th><th>วันที่</th><th>ลูกค้า</th><th>เลขผู้เสียภาษี</th><th class="num">ยอดก่อนหัก</th><th class="num">อัตรา</th><th class="num">ภาษีที่ถูกหัก</th><th>ชำระแล้ว</th><th>ได้รับ 50 ทวิ</th></tr>
+ ${I.map(v=>`<tr><td>${v.no}</td><td>${thDate(v.date)}</td><td>${esc(v.customer)}</td><td>${esc(db.customers.find(c=>c.name===v.customer)?.taxid||'-')}</td><td class="num">${fmt(v.sub)}</td><td class="num">${v.whtRate}%</td><td class="num">${fmt(v.wht)}</td><td>${v.status==='ชำระแล้ว'?'✅':'⏳'}</td><td><input type="checkbox" style="width:auto" ${v.cert?'checked':''} onchange="setCert('${v.id}',this.checked)"></td></tr>`).join('')||'<tr><td colspan="9" class="hint">ยังไม่มีข้อมูล</td></tr>'}</table></div>
+ <p class="hint">💡 ทุกครั้งที่ลูกค้าโอนเงิน ให้ขอหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) แล้วติ๊กในช่องด้านขวา เก็บตัวจริงไว้ใช้ตอนยื่นภาษี</p></div>
+ <div class="card"><h3>📤 ภาษีที่บริษัทต้องหักผู้อื่น (สรุปเบื้องต้น ควรยืนยันกับนักบัญชี)</h3><ul class="hint">
+ <li>เงินเดือน/ค่าจ้างพนักงาน → ยื่น ภ.ง.ด.1 (กรอกยอดภาษีในหน้าค่าจ้าง)</li>
+ <li>จ้างรถร่วมหรือผู้ขนส่งภายนอก → หัก 1% ยื่น ภ.ง.ด.3 (บุคคลธรรมดา) / ภ.ง.ด.53 (นิติบุคคล)</li>
+ <li>ค่าบริการหรือค่าซ่อมจากผู้ให้บริการ → โดยทั่วไปหัก 3%</li>
+ <li>ยื่นภายในวันที่ 7 ของเดือนถัดไป (ถ้ายื่นออนไลน์ได้ขยายเวลาถึงประมาณวันที่ 15)</li></ul></div>`;
+}
+
+// ================= 📈 รายงาน =================
+function repData(){
+ const T=MT(),E=ME();
+ const plates=[...new Set([...db.vehicles.map(v=>v.plate),...T.map(t=>t.plate),...E.map(e=>e.plate)].filter(Boolean))];
+ const V=plates.map(p=>{const t=T.filter(x=>x.plate===p),e=E.filter(x=>x.plate===p),rev=sum(t,x=>x.price),pay=sum(t,x=>x.pay),ex=sum(e,x=>x.amount);
+  return[p,sum(t,x=>x.trips),rev,pay,ex,rev-pay-ex,rev?((rev-pay-ex)/rev*100).toFixed(1)+'%':'-']});
+ const C=Object.entries(groupBy(T,t=>t.customer||'ไม่ระบุลูกค้า')).map(([c,t])=>[c,sum(t,x=>x.trips),sum(t,x=>x.price),sum(db.invoices.filter(v=>v.customer===c&&v.status!=='ชำระแล้ว'),v=>v.net)]);
+ const Dr=Object.entries(groupBy(T,t=>t.driver)).map(([d,t])=>[d,sum(t,x=>x.trips),sum(t,x=>x.price),sum(t,x=>x.pay),sum(E.filter(e=>e.driver===d),e=>e.amount)]);
+ return{V,C,Dr};
+}
+function pReports(){const R=repData();
+ return `<div class="card"><h3>📈 แนวโน้ม 6 เดือน (สิ้นสุดที่ ${thMonth(month)})</h3><div class="ch"><canvas id="c5"></canvas></div></div>
+ <div class="card"><h3>🚛 กำไรต่อคัน</h3>${tbl(['ทะเบียน','เที่ยว','รายได้','ค่าเที่ยวคนขับ','ค่าใช้จ่ายรถ','กำไร','อัตรากำไร'],R.V)}</div>
+ <div class="g2"><div class="card"><h3>🏢 ยอดตามลูกค้า</h3>${tbl(['ลูกค้า','เที่ยว','รายได้','ค้างชำระ (ทุกงวด)'],R.C)}</div>
+ <div class="card"><h3>🧑‍✈️ ผลงานคนขับ</h3>${tbl(['คนขับ','เที่ยว','รายได้ที่สร้าง','ค่าเที่ยว','ค่าใช้จ่ายที่แจ้ง'],R.Dr)}</div></div>`}
+function drawRep(){
+ const ms=[];for(let i=5;i>=0;i--){const x=D(month);x.setMonth(x.getMonth()-i);ms.push(ymd(x).slice(0,7))}
+ const rev=[],cost=[];ms.forEach(m=>{const T=db.trips.filter(t=>(t.date||'').startsWith(m)).map(calc);rev.push(sum(T,t=>t.price));cost.push(sum(T,t=>t.pay)+sum(db.expenses.filter(e=>(e.date||'').startsWith(m)),e=>e.amount))});
+ mk('c5','bar',ms.map(m=>thMonth(m,1)),[{label:'รายได้',data:rev,backgroundColor:'#2563eb'},{label:'ต้นทุน (ค่าเที่ยว+ค่าใช้จ่าย)',data:cost,backgroundColor:'#f87171'},{type:'line',label:'กำไร',data:rev.map((r,i)=>r-cost[i]),borderColor:'#16a34a',backgroundColor:'#16a34a'}]);
+}
+
+// ================= ⚙️ ตั้งค่า =================
+function pSettings(){const s=db.settings,f=(k,l,t='text')=>`<label>${l}<input type="${t}" value="${esc(s[k])}" onchange="db.settings['${k}']=this.type==='number'?+this.value:this.value;save()"></label>`;
+ return `<div class="card"><h3>🏢 ข้อมูลบริษัท (แสดงบนเอกสาร)</h3><div class="form">${f('company','ชื่อบริษัท')}${f('taxid','เลขประจำตัวผู้เสียภาษี')}${f('address','ที่อยู่')}${f('phone','โทรศัพท์')}${f('bank','บัญชีรับโอน')}</div></div>
+ <div class="card"><h3>🧮 ภาษีและประกันสังคม</h3><div class="form">${f('wht','หัก ณ ที่จ่ายค่าขนส่ง (%) ค่าเริ่มต้น','number')}${f('vat','VAT (%) ใส่ 0 ถ้าไม่มี','number')}${f('sso','ประกันสังคม (%)','number')}${f('ssoCap','ประกันสังคมสูงสุดต่อเดือน (บาท)','number')}</div>
+ <p class="hint">ค่าขนส่งทางบกในประเทศโดยทั่วไปได้รับยกเว้น VAT และลูกค้านิติบุคคลหัก ณ ที่จ่าย 1% · เพดานประกันสังคมตั้งไว้ 875 บาท (ค่าจ้างสูงสุด 17,500 บาท ตามเพดานใหม่ปี 2569) · ควรยืนยันกับนักบัญชีอีกครั้ง</p></div>
+ <div class="card"><h3>💾 สำรอง / กู้คืนข้อมูล</h3><p class="hint">ข้อมูลเก็บอยู่ในเบราว์เซอร์ของเครื่องนี้ ควรสำรองข้อมูลทุกสัปดาห์และเก็บไฟล์ไว้ใน OneDrive</p>
+ <button onclick="backup()">💾 สำรองข้อมูล (.json)</button><label class="btn g">📂 กู้คืน<input type="file" accept=".json" hidden onchange="restore(this)"></label>
+ <button class="g" onclick="if(confirm('แทนที่ข้อมูลทั้งหมดด้วยข้อมูลตัวอย่าง?')){db=sample();save();render()}">🎲 โหลดข้อมูลตัวอย่าง</button>
+ <button class="r" onclick="if(confirm('ลบข้อมูลทั้งหมดเพื่อเริ่มใช้งานจริง? (ข้อมูลบริษัทยังอยู่) ควรสำรองก่อน')){db={...structuredClone(DEF),settings:db.settings};save();render()}">🗑 ล้างข้อมูลเพื่อเริ่มใช้งานจริง</button></div>`}
+function backup(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db)],{type:'application/json'}));a.download=`tms_backup_${today}.json`;a.click()}
+async function restore(inp){try{db=Object.assign(structuredClone(DEF),JSON.parse(await inp.files[0].text()));save();render();alert('กู้คืนเรียบร้อยค่ะ')}catch{alert('ไฟล์ไม่ถูกต้อง')}}
+
+// ================= ส่งออก Excel =================
+function sheet(name,data,file){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(data),name);XLSX.writeFile(wb,file)}
+const tripJson=t=>({'วันที่':t.date,'คนขับ':t.driver,'ทะเบียน':t.plate,'ลูกค้า':t.customer,'ต้นทาง':t.origin,'ปลายทาง':t.destination,'เที่ยว':+t.trips,'สถานะ':t.status,'ราคา/เที่ยว':t.unit,'ค่าเที่ยวลูกค้า':t.price,'ค่าจ้างคนขับ':t.pay,'เลขที่บิล':t.invoiceNo||''});
+const expJson=e=>({'วันที่':e.date,'คนขับ':e.driver,'ทะเบียน':e.plate,'ประเภท':e.category,'จำนวนเงิน':+e.amount,'ผู้จ่าย':e.payBy,'หมายเหตุ':e.memo||''});
+function xlsOne(key){const S=SCHEMA[key];let rows=db[key];if(S.monthly)rows=rows.filter(r=>(r.date||'').startsWith(month));
+ const data=key==='trips'?rows.map(calc).map(tripJson):key==='expenses'?rows.map(expJson):rows.map(r=>Object.fromEntries(S.cols.map(([k,l])=>[l,r[k]??''])));
+ sheet(S.title,data,`${S.title}_${S.monthly?month:today}.xlsx`)}
+function exportAll(){
+ const wb=XLSX.utils.book_new(),add=(n,ws)=>XLSX.utils.book_append_sheet(wb,ws,n),js=d=>XLSX.utils.json_to_sheet(d),T=MT(),E=ME(),R=repData();
+ const rev=sum(T,t=>t.price),pay=sum(T,t=>t.pay),exp=sum(E,e=>e.amount);
+ add('สรุป',XLSX.utils.aoa_to_sheet([['สรุปประจำเดือน',thMonth(month)],['จำนวนเที่ยว',sum(T,t=>t.trips)],['รายได้',rev],['ค่าเที่ยวคนขับ',pay],['ค่าใช้จ่ายรถ',exp],['กำไรขั้นต้น',rev-pay-exp]]));
+ add('เที่ยววิ่ง',js(T.map(tripJson)));add('ค่าใช้จ่าย',js(E.map(expJson)));add('ค่าจ้าง',js(payJson()));
+ add('ใบวางบิล',js(db.invoices.filter(v=>v.period===month).map(v=>({'เลขที่':v.no,'วันที่':v.date,'ลูกค้า':v.customer,'ยอดก่อนหัก':v.sub,'VAT':v.vat,'หัก ณ ที่จ่าย':v.wht,'สุทธิ':v.net,'ครบกำหนด':v.due,'สถานะ':v.status,'เลขที่ใบเสร็จ':v.rcNo||''}))));
+ add('กำไรต่อคัน',js(R.V.map(r=>({'ทะเบียน':r[0],'เที่ยว':r[1],'รายได้':r[2],'ค่าเที่ยวคนขับ':r[3],'ค่าใช้จ่าย':r[4],'กำไร':r[5],'อัตรากำไร':r[6]}))));
+ XLSX.writeFile(wb,`รายงานขนส่ง_${month}.xlsx`)}
+
+// ================= ข้อมูลตัวอย่าง =================
+function sample(){
+ const d=structuredClone(DEF);db=d;
+ Object.assign(d.settings,{company:'บริษัท ตัวอย่าง ขนส่ง จำกัด',address:'99 ถ.สุขุมวิท อ.บ้านฉาง จ.ระยอง 21130',taxid:'0215560000000',phone:'038-000-000',bank:'ธ.กสิกรไทย 123-4-56789-0'});
+ d.customers=[['บจก. สยามพาณิชย์','0105551234567',30],['บจก. ระยองอินดัสทรี','0215559876543',45],['หจก. ชลบุรีโลจิสติกส์','0203551112223',30]].map(([name,taxid,credit])=>({id:uid(),name,taxid,branch:'สำนักงานใหญ่',address:'',phone:'',credit,wht:1}));
+ d.drivers=[['สมชาย ใจดี','ชาย',12000,200],['สมศักดิ์ รักงาน','ศักดิ์',12000,20],['วีระ กล้าหาญ','Weera',11000,400],['ประยูร มั่นคง','ยูร',11000,-5]].map(([name,lineName,salary,l])=>({id:uid(),name,lineName,phone:'08x-xxx-xxxx',idcard:'',salary,bank:'',license:addDays(today,l)}));
+ d.vehicles=[['ก215','6 ล้อ',15,90],['70-1234','10 ล้อ',120,25],['71-5678','10 ล้อ',250,300],['2กข889','4 ล้อจัมโบ้',-3,180]].map(([plate,type,tx,ins],i)=>({id:uid(),plate,type,driver:d.drivers[i].name,taxExp:addDays(today,tx),insExp:addDays(today,ins),actExp:addDays(today,tx),serviceKm:''}));
+ d.rates=[[0,'กรุงเทพ','ระยอง',4500,900],[0,'กรุงเทพ','ชลบุรี',3500,700],[1,'ระยอง','สระบุรี',6000,1200],[1,'ระยอง','กรุงเทพ',4500,900],[2,'ชลบุรี','อยุธยา',5000,1000],[2,'ชลบุรี','กรุงเทพ',3500,700]].map(([c,origin,destination,price,pay])=>({id:uid(),customer:d.customers[c].name,origin,destination,price,pay}));
+ const cur=today.slice(0,7),x=D(cur);x.setMonth(x.getMonth()-1);const prev=ymd(x).slice(0,7);
+ for(;ymd(x)<=today;x.setDate(x.getDate()+1)){const ds=ymd(x);if(x.getDay()===0)continue;
+  d.vehicles.forEach(v=>{if(Math.random()<.3)return;const r=d.rates[Math.floor(Math.random()*d.rates.length)],n=Math.random()<.25?2:1;
+   d.trips.push({id:uid(),date:ds,driver:v.driver,plate:v.plate,customer:'',origin:r.origin,destination:r.destination,trips:n,status:daysTo(ds)>-4?'รอตรวจ':'อนุมัติ',note:`${v.plate} ${r.origin}-${r.destination} ${n} เที่ยว`});
+   d.expenses.push({id:uid(),date:ds,driver:v.driver,plate:v.plate,category:'น้ำมัน',amount:Math.round(r.price*.28*n/10)*10,payBy:'บริษัท',memo:'บัตรน้ำมัน',note:''});
+   if(Math.random()<.4)d.expenses.push({id:uid(),date:ds,driver:v.driver,plate:v.plate,category:'ทางด่วน',amount:[60,105,160,240][Math.floor(Math.random()*4)],payBy:'คนขับสำรองจ่าย',memo:'',note:`${v.plate} ทางด่วน`})})}
+ d.expenses.push({id:uid(),date:prev+'-12',driver:d.drivers[1].name,plate:'70-1234',category:'ยาง',amount:8400,payBy:'บริษัท',memo:'เปลี่ยนยาง 2 เส้น',note:''});
+ d.customers.forEach((c,i)=>{const v=makeInvoice(c.name,prev,cur+'-01');if(v&&i===0){v.status='ชำระแล้ว';v.paidDate=cur+'-01';v.rcNo=nextNo('RC',cur+'-01');v.cert=true}});
+ return d;
+}
+
+// ================= เริ่มต้น =================
+const saved=localStorage.getItem('tms_db');
+db=saved?Object.assign(structuredClone(DEF),JSON.parse(saved)):sample();save();
+Chart.defaults.font.family='Sarabun';
+render();
+</script>
+</body>
+</html>
